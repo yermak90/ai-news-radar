@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime
+from urllib.parse import parse_qsl
 
 import httpx
 
@@ -21,8 +22,6 @@ class HackerNewsCollector(BaseCollector):
     async def collect(self, source: Source) -> list[CollectedItem]:
         params = {"tags": "story", "query": "AI", "hitsPerPage": "30"}
         if source.feed_url:
-            from urllib.parse import parse_qsl
-
             params.update(dict(parse_qsl(source.feed_url)))
 
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
