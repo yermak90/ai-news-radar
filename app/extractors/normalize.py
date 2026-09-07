@@ -18,8 +18,7 @@ def normalize_url(url: str) -> str:
     parsed = urlparse(url.strip())
     scheme = (parsed.scheme or "https").lower()
     netloc = parsed.netloc.lower()
-    if netloc.startswith("www."):
-        netloc = netloc[4:]
+    netloc = netloc.removeprefix("www.")
 
     query_pairs = [
         (k, v)

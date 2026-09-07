@@ -85,4 +85,4 @@ class Deduplicator:
                 published,
             )
 
-        return sorted(items, key=sort_key)[0]
+        return min(items, key=sort_key)

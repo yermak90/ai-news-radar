@@ -10,6 +10,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import ClassVar
 
 import httpx
 from pydantic import ValidationError
@@ -187,7 +188,7 @@ class MockLLMProvider(LLMProvider):
     end without any real API key.
     """
 
-    _KEYWORD_CATEGORIES: dict[str, list[str]] = {
+    _KEYWORD_CATEGORIES: ClassVar[dict[str, list[str]]] = {
         "STT": ["speech", "transcri", "asr", "voice", "diariz", "распозна"],
         "MEETING_INTELLIGENCE": ["meeting", "protocol", "minutes", "совещан", "протокол"],
         "DOCUMENTS_RAG": ["rag", "retrieval", "embedding", "vector", "document", "ocr"],

@@ -91,7 +91,7 @@ async def extract_and_dedup(session: AsyncSession) -> ProcessingStats:
                 clustered_items.append(raw_item)  # visible to dedup for the rest of this batch
 
             await session.commit()
-        except Exception:  # noqa: BLE001
+        except Exception:
             await session.rollback()
             logger.warning("Failed to extract/dedup raw item %s", raw_item.id, exc_info=True)
             await raw_item_repo.set_status(raw_item, ProcessingStatus.FAILED, reason="extraction/dedup error")
@@ -177,7 +177,7 @@ async def run_ai_analysis(session: AsyncSession, llm_provider: LLMProvider) -> P
             await raw_item_repo.set_status(raw_item, ProcessingStatus.PROCESSED)
             stats.analyzed += 1
             await session.commit()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             await session.rollback()
             logger.warning("AI analysis failed for raw item %s", raw_item.id, exc_info=True)
             await raw_item_repo.set_status(raw_item, ProcessingStatus.FAILED, reason=str(exc)[:500])

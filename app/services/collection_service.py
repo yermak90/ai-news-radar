@@ -87,7 +87,7 @@ async def run_collection(session: AsyncSession) -> CollectionStats:
             await source_repo.mark_checked(source, datetime.now(UTC))
             await session.commit()
             logger.info("Source %r: %d items found, %d new", source.name, found, new)
-        except Exception:  # noqa: BLE001 - one source failing must not stop the rest
+        except Exception:
             await session.rollback()
             stats.sources_failed += 1
             stats.failed_sources.append(source.name)

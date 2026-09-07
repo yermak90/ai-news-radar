@@ -45,7 +45,7 @@ class ArxivCollector(BaseCollector):
         for entry in parsed.entries:
             try:
                 items.append(self._entry_to_item(entry))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Skipping malformed arXiv entry", exc_info=True)
         return items
 

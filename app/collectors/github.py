@@ -31,7 +31,7 @@ class GitHubReleasesCollector(BaseCollector):
         for release in releases:
             try:
                 items.append(self._release_to_item(release))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Skipping malformed GitHub release from %s", source.name, exc_info=True)
         return items
 
@@ -43,7 +43,7 @@ class GitHubReleasesCollector(BaseCollector):
             raise ValueError("Release missing name/url")
 
         published_raw = release.get("published_at") or release.get("created_at")
-        published_at = datetime.fromisoformat(published_raw.replace("Z", "+00:00")) if published_raw else None
+        published_at = datetime.fromisoformat(published_raw) if published_raw else None
 
         author = (release.get("author") or {}).get("login")
         body = release.get("body") or ""

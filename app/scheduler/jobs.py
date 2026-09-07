@@ -60,7 +60,7 @@ async def daily_digest_job(session_factory: async_sessionmaker, bot: Bot, settin
                         parse_mode="HTML",
                         disable_web_page_preview=True,
                     )
-            except Exception:  # noqa: BLE001 - one user's delivery failure shouldn't block others
+            except Exception:
                 logger.warning("Failed to send digest to user %s", user.telegram_user_id, exc_info=True)
                 status = DigestStatus.FAILED
 

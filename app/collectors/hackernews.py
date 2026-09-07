@@ -34,7 +34,7 @@ class HackerNewsCollector(BaseCollector):
         for hit in payload.get("hits", []):
             try:
                 items.append(self._hit_to_item(hit))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Skipping malformed HN hit", exc_info=True)
         return items
 
