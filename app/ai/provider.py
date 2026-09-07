@@ -181,6 +181,92 @@ class OpenAIProvider(LLMProvider):
             raise LLMResponseError(str(exc)) from exc
 
 
+_GEMINI_UNSUPPORTED_SCHEMA_KEYS = {"additionalProperties", "minimum", "maximum"}
+
+
+def _json_schema_for_gemini(schema: dict) -> dict:
+    """Strip JSON Schema keywords Gemini's `responseSchema` doesn't accept.
+
+    Gemini's structured-output schema is a restricted subset of OpenAPI 3.0:
+    no "additionalProperties", no numeric "minimum"/"maximum", no multi-type
+    arrays like ["string", "null"] (use "nullable" instead). Numeric/enum
+    bounds are still enforced on our side by `AIAnalysisResult` validation —
+    an out-of-range value simply fails validation and triggers a retry.
+    """
+    if isinstance(schema, dict):
+        cleaned = {}
+        for key, value in schema.items():
+            if key in _GEMINI_UNSUPPORTED_SCHEMA_KEYS:
+                continue
+            if key == "type" and isinstance(value, list):
+                non_null = [t for t in value if t != "null"]
+                cleaned["type"] = non_null[0] if non_null else "string"
+                cleaned["nullable"] = True
+                continue
+            cleaned[key] = _json_schema_for_gemini(value)
+        return cleaned
+    if isinstance(schema, list):
+        return [_json_schema_for_gemini(item) for item in schema]
+    return schema
+
+
+class GeminiProvider(LLMProvider):
+    """Talks to the Google Gemini API (`generativelanguage.googleapis.com`).
+
+    Uses `responseMimeType=application/json` + `responseSchema` for structured
+    JSON output (PRD sections 35-37), same JSON_SCHEMA/system+user prompts as
+    the other providers.
+    """
+
+    def __init__(self, api_key: str, model: str, api_base: str = "") -> None:
+        self._api_key = api_key
+        self._model = model
+        self._base_url = (
+            api_base or "https://generativelanguage.googleapis.com/v1beta"
+        ).rstrip("/")
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        retry=retry_if_exception_type((httpx.HTTPError, LLMResponseError)),
+    )
+    async def analyze(self, item: NewsAnalysisInput) -> AIAnalysisResult:
+        user_prompt = build_user_prompt(
+            source_name=item.source_name,
+            source_type=item.source_type,
+            url=item.url,
+            title=item.title,
+            content=item.content,
+        )
+        payload = {
+            "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+                "responseSchema": _json_schema_for_gemini(JSON_SCHEMA),
+            },
+        }
+        headers = {"Content-Type": "application/json"}
+        url = f"{self._base_url}/models/{self._model}:generateContent"
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                url, params={"key": self._api_key}, json=payload, headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        try:
+            raw_content = data["candidates"][0]["content"]["parts"][0]["text"]
+            parsed = json.loads(raw_content)
+            return AIAnalysisResult.model_validate(parsed)
+        except (KeyError, IndexError, json.JSONDecodeError, ValidationError) as exc:
+            logger.warning("LLM returned an invalid structured response: %s", exc)
+            raise LLMResponseError(str(exc)) from exc
+
+
 class MockLLMProvider(LLMProvider):
     """Deterministic offline provider — used when LLM_PROVIDER=mock and in tests.
 
@@ -249,10 +335,17 @@ class MockLLMProvider(LLMProvider):
 
 
 def get_llm_provider(settings: Settings) -> LLMProvider:
-    if settings.llm_provider.lower() == "openai":
+    provider = settings.llm_provider.lower()
+    if provider in ("openai", "gemini"):
         if not settings.llm_api_key:
-            logger.warning("LLM_PROVIDER=openai but LLM_API_KEY is empty — falling back to mock provider")
+            logger.warning(
+                "LLM_PROVIDER=%s but LLM_API_KEY is empty — falling back to mock provider", provider
+            )
             return MockLLMProvider()
+        if provider == "gemini":
+            return GeminiProvider(
+                api_key=settings.llm_api_key, model=settings.llm_model, api_base=settings.llm_api_base
+            )
         return OpenAIProvider(
             api_key=settings.llm_api_key, model=settings.llm_model, api_base=settings.llm_api_base
         )

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # LLM
     llm_provider: str = "mock"
     llm_api_key: str = ""
-    llm_model: str = "gpt-4o-mini"
+    llm_model: str = "gemini-2.0-flash"
     llm_api_base: str = ""
 
     # Timezone / schedule

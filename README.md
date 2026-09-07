@@ -15,6 +15,9 @@ Telegram-бот, который мониторит AI-новости из нес
 - Дешёвая keyword-фильтрация перед дорогим LLM-вызовом (cost control).
 - AI-классификация и анализ через абстракцию `LLMProvider` со строго структурированным
   JSON-ответом (см. `app/ai/schemas.py`), с защитой от prompt injection в системном промпте.
+  Реализации: `GeminiProvider` (Google Gemini, `responseMimeType=application/json` +
+  `responseSchema`), `OpenAIProvider` (любой OpenAI-совместимый `chat.completions` API,
+  `response_format: json_schema`) и `MockLLMProvider` (офлайн keyword-эвристика).
 - Скоринг, ранжирование (настраиваемая формула) и diversity-aware выбор TOP 3.
 - Ежедневный дайджест + 10 команд Telegram по категориям.
 - Планировщик (APScheduler): периодический сбор + ежедневная отправка дайджеста в
@@ -48,13 +51,23 @@ app/
    TELEGRAM_BOT_TOKEN=<ваш токен>
    ADMIN_TELEGRAM_USER_ID=<ваш числовой Telegram user id, для /refresh>
    ```
-3. (Опционально, но рекомендуется) укажите LLM-провайдера:
+3. (Опционально, но рекомендуется) укажите LLM-провайдера. Рекомендуемый вариант —
+   Google Gemini, у которого есть щедрый бесплатный тир:
+   1. Откройте [aistudio.google.com](https://aistudio.google.com), войдите с Google-аккаунтом.
+   2. Нажмите **Get API key** → **Create API key** и скопируйте ключ.
+   3. Впишите его в `.env`:
+      ```env
+      LLM_PROVIDER=gemini
+      LLM_API_KEY=<ваш ключ из AI Studio>
+      LLM_MODEL=gemini-2.0-flash
+      ```
+   Вместо Gemini можно использовать любой OpenAI-совместимый API:
    ```env
    LLM_PROVIDER=openai
    LLM_API_KEY=<ваш API-ключ>
    LLM_MODEL=gpt-4o-mini
    ```
-   Если оставить `LLM_PROVIDER=mock` (значение по умолчанию), бот полностью
+   Если оставить `LLM_PROVIDER=mock` (или `LLM_API_KEY` пустым), бот полностью
    работает без реального LLM API — см. раздел "Что замокано" ниже.
 4. Запустите:
    ```bash
@@ -95,7 +108,7 @@ python -m app.main
 
 ```bash
 source .venv/bin/activate
-pytest -q          # 63 теста: unit + integration, без обращений к реальному LLM/Telegram API
+pytest -q          # 77 тестов: unit + integration, без обращений к реальному LLM/Telegram API
 ruff check app tests
 ```
 
@@ -127,13 +140,21 @@ LLM API и реальный Telegram API в тестах не задейству
 
 - **`TELEGRAM_BOT_TOKEN`** — без него бот вообще не стартует (это проверяется в
   `app/main.py`: явное сообщение в лог вместо падения с непонятной ошибкой).
-- **`LLM_API_KEY`** (при `LLM_PROVIDER=openai`) — без него анализ новостей будет
-  выполняться эвристикой `MockLLMProvider`, а не настоящей LLM. Значит, `Summary`,
+- **`LLM_API_KEY`** (при `LLM_PROVIDER=gemini` или `openai`) — без него анализ новостей
+  будет выполняться эвристикой `MockLLMProvider`, а не настоящей LLM. Значит, `Summary`,
   `Why it matters`, `Practical use` и т.д. будут значительно проще/грубее, чем
-  того требует PRD §16. `OpenAIProvider` реализован как настоящий клиент
-  OpenAI-совместимого `chat.completions` API со structured JSON output
-  (`response_format: json_schema`) и работает с любым OpenAI-совместимым эндпоинтом
-  (Azure OpenAI, локальный vLLM/Ollama, OpenRouter — через `LLM_API_BASE`).
+  того требует PRD §16.
+  - `GeminiProvider` — настоящий клиент Google Gemini API
+    (`generativelanguage.googleapis.com`) со structured JSON output
+    (`responseMimeType=application/json` + `responseSchema`). Бесплатный ключ —
+    на [aistudio.google.com](https://aistudio.google.com) ("Get API key"), см. раздел
+    "Быстрый старт" выше.
+  - `OpenAIProvider` — настоящий клиент OpenAI-совместимого `chat.completions` API
+    со structured JSON output (`response_format: json_schema`) и работает с любым
+    OpenAI-совместимым эндпоинтом (Azure OpenAI, локальный vLLM/Ollama, OpenRouter —
+    через `LLM_API_BASE`).
+  - Оба провайдера используют один и тот же системный промпт с защитой от prompt
+    injection (PRD §51) и одну и ту же JSON-схему ответа (`app/ai/provider.py:JSON_SCHEMA`).
 
 ### Не проверено вживую (нет сетевого доступа из песочницы разработки)
 
@@ -178,8 +199,8 @@ LLM API и реальный Telegram API в тестах не задейству
 | `TELEGRAM_BOT_TOKEN` | Токен бота из @BotFather. Обязателен. |
 | `ADMIN_TELEGRAM_USER_ID` | Telegram user id, которому доступна `/refresh`. |
 | `DATABASE_URL` | Async SQLAlchemy URL. По умолчанию — Postgres (docker-compose), можно SQLite для локального прототипа. |
-| `LLM_PROVIDER` | `mock` (по умолчанию, без ключа) или `openai` (любой OpenAI-совместимый API). |
-| `LLM_API_KEY`, `LLM_MODEL`, `LLM_API_BASE` | Настройки LLM-провайдера. |
+| `LLM_PROVIDER` | `gemini` (Google Gemini), `openai` (любой OpenAI-совместимый API) или `mock` (без ключа, по умолчанию в коде). |
+| `LLM_API_KEY`, `LLM_MODEL`, `LLM_API_BASE` | Настройки LLM-провайдера. Для Gemini ключ — на [aistudio.google.com](https://aistudio.google.com). |
 | `TIMEZONE` | Таймзона для дайджеста и cron-расписания. По умолчанию `Asia/Almaty`. |
 | `DIGEST_HOUR`, `DIGEST_MINUTE` | Время ежедневной отправки дайджеста, в `TIMEZONE`. |
 | `COLLECTION_INTERVAL_MINUTES` | Частота фонового сбора новостей. |
